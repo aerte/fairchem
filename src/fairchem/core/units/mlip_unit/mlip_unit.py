@@ -766,6 +766,22 @@ class MLIPTrainEvalUnit(
                 "train/num_samples_on_rank": num_samples_local,
             }
 
+            # Log per-task losses
+            for task_name, task_loss in loss_dict.items():
+                log_dict[f"train/{task_name}_loss"] = task_loss.item()
+
+            # Compute and log metrics per task and dataset
+            datasets_in_batch = set(batch_on_device.dataset_name)
+            for task in self.tasks:
+                for dataset_name in datasets_in_batch:
+                    metrics_dict = compute_metrics(
+                        task, pred, batch_on_device, dataset_name
+                    )
+                    for metric_name, metric_value in metrics_dict.items():
+                        # Log the metric value (Metrics dataclass has .metric attribute)
+                        log_dict[f"train/{task.name}_{metric_name}"] = metric_value.metric
+
+
             if self.logger:
                 self.logger.log(log_dict, step=step, commit=True)
 
@@ -1039,7 +1055,7 @@ class MLIPEvalUnit(EvalUnit[AtomicData]):
                     numel = distutils.all_reduce(
                         metrics.numel, average=False, device=device
                     )
-                    log_dict[f"val/{dataset},{task},{metric_name}"] = total / numel
+                    log_dict[f"val/{task}_{metric_name}"] = total / numel
 
         total_runtime = distutils.all_reduce(
             self.total_runtime, average=False, device=device
